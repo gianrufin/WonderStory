@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Volume2, VolumeX, Play, Pause, RotateCcw, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Volume2, VolumeX, Play, Pause, RotateCcw, Sparkles, ChevronLeft, ChevronRight, Mic, Cpu } from 'lucide-react';
 import { StoryPage, VoiceName } from '../types';
 import { VOICE_OPTIONS } from '../data/defaultStories';
 import { playChimeSound } from '../utils/audio';
+import { getBestNaturalVoice, getAvailableSpeechVoices } from '../utils/speechVoice';
 
 interface NarrationReaderProps {
   page: StoryPage;
@@ -41,8 +42,30 @@ export const NarrationReader: React.FC<NarrationReaderProps> = ({
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [playbackProgress, setPlaybackProgress] = useState(0);
   const [activeWordIndex, setActiveWordIndex] = useState<number | null>(null);
+  const [audioSource, setAudioSource] = useState<'gemini' | 'browser' | null>(null);
+  const [systemVoicesReady, setSystemVoicesReady] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const words = page.text.split(' ');
+
+  // Listen for browser voices initialization (critical for Chrome & Incognito mode)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+
+    const updateVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        setSystemVoicesReady(true);
+      }
+    };
+
+    updateVoices();
+    window.speechSynthesis.onvoiceschanged = updateVoices;
+    return () => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.onvoiceschanged = null;
+      }
+    };
+  }, []);
 
   // Stop previous audio when page changes
   useEffect(() => {
@@ -95,6 +118,7 @@ export const NarrationReader: React.FC<NarrationReaderProps> = ({
       }
 
       if (audioBase64) {
+        setAudioSource('gemini');
         const audioSrc = `data:audio/wav;base64,${audioBase64}`;
         const audio = new Audio(audioSrc);
         audioRef.current = audio;
@@ -120,17 +144,20 @@ export const NarrationReader: React.FC<NarrationReaderProps> = ({
         setIsPlaying(true);
         onPlayingChange?.(true);
       } else if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-        // High quality client-side fallback narration
+        // High quality client-side fallback narration with natural voice
+        setAudioSource('browser');
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(page.text);
-        utterance.rate = 0.95;
-        utterance.pitch = 1.05;
+        
+        // Warm, natural storybook pacing
+        utterance.rate = 0.92;
+        utterance.pitch = 1.0;
 
-        // Try to match voice tone
-        const availableVoices = window.speechSynthesis.getVoices();
-        if (availableVoices.length > 0) {
-          const naturalVoice = availableVoices.find((v) => v.name.includes('Natural') || v.name.includes('Google') || v.lang.startsWith('en')) || availableVoices[0];
-          if (naturalVoice) utterance.voice = naturalVoice;
+        const voiceOption = VOICE_OPTIONS.find((v) => v.id === activeVoice);
+        const preferredGender = (voiceOption?.gender as 'Female' | 'Male' | 'Neutral') || 'Female';
+        const naturalVoice = getBestNaturalVoice(preferredGender);
+        if (naturalVoice) {
+          utterance.voice = naturalVoice;
         }
 
         utterance.onboundary = (e) => {
@@ -193,6 +220,15 @@ export const NarrationReader: React.FC<NarrationReaderProps> = ({
             <h3 className="text-indigo-600 font-black uppercase text-xs sm:text-sm tracking-wider">
               Page {page.pageNumber} of {totalPages}
             </h3>
+            {/* Audio Engine Badge */}
+            {audioSource && (
+              <span className={`inline-flex items-center gap-1 text-[10px] sm:text-xs font-black px-2 py-0.5 rounded-full border border-slate-900 ${
+                audioSource === 'gemini' ? 'bg-purple-100 text-purple-900' : 'bg-blue-100 text-blue-900'
+              }`}>
+                {audioSource === 'gemini' ? <Sparkles className="w-3 h-3 text-purple-600" /> : <Mic className="w-3 h-3 text-blue-600" />}
+                {audioSource === 'gemini' ? 'Gemini AI Voice' : 'Natural Speech'}
+              </span>
+            )}
           </div>
 
           {/* Voice Selector & Autoplay Toggle */}
