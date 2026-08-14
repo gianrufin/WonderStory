@@ -1,0 +1,6 @@
+{
+  "name": "WonderStory: Kids Audio & Illustrated Storybook",
+  "description": "Interactive children's storybook with expressive text-to-speech narration, AI-generated illustrations for every page in 1K/2K/4K resolution, and interactive character chat.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
